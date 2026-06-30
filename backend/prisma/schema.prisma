@@ -1,0 +1,320 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  HONOUR
+  STAFF
+}
+
+enum StaffType {
+  BUTLER
+  CHEF
+  MAID
+  DRIVER
+  SECURITY
+  GARDENER
+  HOUSEKEEPER
+  NANNY
+  OTHER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskCategory {
+  CLEANING
+  COOKING
+  MAINTENANCE
+  DRIVING
+  SECURITY
+  SHOPPING
+  OTHER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  LATE
+}
+
+enum VisitorStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+enum GroceryStatus {
+  PENDING
+  PURCHASED
+  CANCELLED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  MEAL_READY
+  LOW_STOCK
+  VISITOR_ARRIVED
+  GROCERY_REQUEST
+  SUMMARY
+}
+
+enum NotificationStatus {
+  SENT
+  FAILED
+  DELIVERED
+}
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  role        Role
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
+  
+  // Relations
+  staff       Staff?
+  homes       Home[]    @relation("HonourHomes")
+  createdTasks Task[]   @relation("CreatedTasks")
+  visitors    Visitor[] @relation("HostVisitors")
+  groceryReqs GroceryItem[] @relation("RequestedGroceries")
+  reports     Report[]  @relation("GeneratedReports")
+  notifications Notification[]
+}
+
+model Home {
+  id          String    @id @default(uuid())
+  name        String
+  address     String?
+  honourId    String
+  honour      User      @relation("HonourHomes", fields: [honourId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
+
+  // Relations
+  tasks       Task[]
+  visitors    Visitor[]
+  pantryItems PantryItem[]
+  mealPlans   MealPlan[]
+  groceries   GroceryItem[]
+  inventory   InventoryItem[]
+  reports     Report[]
+  settings    Setting[]
+}
+
+model Staff {
+  id          String    @id @default(uuid())
+  userId      String?   @unique
+  user        User?     @relation(fields: [userId], references: [id])
+  name        String
+  phone       String?
+  staffType   StaffType
+  salary      Float?
+  status      String    @default("ACTIVE") // ACTIVE, ON_LEAVE, INACTIVE
+  joinedDate  DateTime  @default(now())
+  leftDate    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
+
+  // Relations
+  tasks       Task[]    @relation("AssignedStaff")
+  attendance  Attendance[]
+}
+
+model Task {
+  id              String       @id @default(uuid())
+  title           String
+  description     String?
+  priority        Priority     @default(MEDIUM)
+  status          TaskStatus   @default(PENDING)
+  category        TaskCategory
+  assignedStaffId String?
+  assignedStaff   Staff?       @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+  homeId          String
+  home            Home         @relation(fields: [homeId], references: [id])
+  dueDate         DateTime?
+  completionDate  DateTime?
+  remarks         String?
+  createdById     String
+  createdBy       User         @relation("CreatedTasks", fields: [createdById], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  isDeleted       Boolean      @default(false)
+
+  // Relations
+  history         TaskHistory[]
+}
+
+model TaskHistory {
+  id          String     @id @default(uuid())
+  taskId      String
+  task        Task       @relation(fields: [taskId], references: [id])
+  status      TaskStatus
+  changedById String
+  remarks     String?
+  createdAt   DateTime   @default(now())
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  staffId   String
+  staff     Staff            @relation(fields: [staffId], references: [id])
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  checkIn   DateTime?
+  checkOut  DateTime?
+  remarks   String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  isDeleted Boolean          @default(false)
+
+  @@unique([staffId, date])
+}
+
+model Visitor {
+  id        String        @id @default(uuid())
+  name      String
+  phone     String?
+  purpose   String?
+  checkIn   DateTime?
+  checkOut  DateTime?
+  hostId    String
+  host      User          @relation("HostVisitors", fields: [hostId], references: [id])
+  status    VisitorStatus @default(EXPECTED)
+  homeId    String
+  home      Home          @relation(fields: [homeId], references: [id])
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  isDeleted Boolean       @default(false)
+}
+
+model PantryItem {
+  id          String    @id @default(uuid())
+  name        String
+  quantity    Float
+  unit        String    // kg, g, l, ml, pcs, etc.
+  minStock    Float     @default(0)
+  expiryDate  DateTime?
+  category    String    // VEGETABLES, SPICES, DAIRY, GRAINS, etc.
+  homeId      String
+  home        Home      @relation(fields: [homeId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
+}
+
+model Recipe {
+  id             String    @id @default(uuid())
+  name           String
+  instructions   String
+  prepTime       Int       // In minutes
+  ingredients    Json      // JSON representation of ingredients and quantities: [{"name":"onion","quantity":2,"unit":"pcs"}]
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  isDeleted      Boolean   @default(false)
+}
+
+model MealPlan {
+  id              String    @id @default(uuid())
+  date            DateTime  @db.Date
+  breakfastName   String?
+  lunchName       String?
+  dinnerName      String?
+  homeId          String
+  home            Home      @relation(fields: [homeId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  isDeleted       Boolean   @default(false)
+}
+
+model GroceryItem {
+  id            String        @id @default(uuid())
+  name          String
+  quantity      Float
+  unit          String
+  category      String?
+  status        GroceryStatus @default(PENDING)
+  requestedById String
+  requestedBy   User          @relation("RequestedGroceries", fields: [requestedById], references: [id])
+  homeId        String
+  home          Home          @relation(fields: [homeId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  isDeleted     Boolean       @default(false)
+}
+
+model InventoryItem {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  quantity    Int
+  location    String?
+  status      String    @default("AVAILABLE") // AVAILABLE, REPAIR, BROKEN
+  homeId      String
+  home        Home      @relation(fields: [homeId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
+}
+
+model Notification {
+  id          String             @id @default(uuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id])
+  title       String
+  message     String
+  type        NotificationType
+  status      NotificationStatus @default(SENT)
+  sentVia     String             @default("WHATSAPP")
+  createdAt   DateTime           @default(now())
+}
+
+model Report {
+  id             String    @id @default(uuid())
+  title          String
+  description    String?
+  type           String    // DAILY_SUMMARY, WEEKLY_SUMMARY, TASK_REPORT, etc.
+  content        Json
+  homeId         String
+  home           Home      @relation(fields: [homeId], references: [id])
+  generatedById  String
+  generatedBy    User      @relation("GeneratedReports", fields: [generatedById], references: [id])
+  createdAt      DateTime  @default(now())
+  isDeleted      Boolean   @default(false)
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String
+  value     String
+  homeId    String
+  home      Home     @relation(fields: [homeId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isDeleted Boolean  @default(false)
+}

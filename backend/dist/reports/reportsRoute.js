@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const reportsController_1 = require("./reportsController");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const roleMiddleware_1 = require("../middleware/roleMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.authMiddleware);
+router.get('/', (0, roleMiddleware_1.roleMiddleware)(['ADMIN', 'HONOUR']), reportsController_1.ReportsController.list);
+router.get('/:id', (0, roleMiddleware_1.roleMiddleware)(['ADMIN', 'HONOUR']), reportsController_1.ReportsController.get);
+router.post('/', (0, roleMiddleware_1.roleMiddleware)(['ADMIN', 'HONOUR']), reportsController_1.ReportsController.create);
+router.delete('/:id', (0, roleMiddleware_1.roleMiddleware)(['ADMIN', 'HONOUR']), reportsController_1.ReportsController.delete);
+exports.default = router;
