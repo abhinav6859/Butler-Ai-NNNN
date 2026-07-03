@@ -1,23 +1,50 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma/client';
 
+// Allowed sort fields and maximum page limit
+const ALLOWED_SORT_FIELDS = ['date', 'createdAt', 'updatedAt'];
+const MAX_LIMIT = 100;
+
 export class MealPlansController {
+  // 1. list: add homeId filter, date range, sort allowlist, limit cap
   public static async list(req: Request, res: Response) {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
-      const date = req.query.date as string; // YYYY-MM-DD
+      const homeId = req.user?.homeId;
+      if (!homeId) {
+        return res.status(400).json({ error: 'Home context is missing' });
+      }
+
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      let limit = parseInt(req.query.limit as string) || 10;
+      limit = Math.min(limit, MAX_LIMIT); // cap limit
+
+      const dateParam = req.query.date as string; // YYYY-MM-DD
       const sortBy = (req.query.sortBy as string) || 'date';
       const sortOrder = (req.query.sortOrder as string) || 'desc';
 
-      const skip = (page - 1) * limit;
+      // Validate sortBy
+      if (!ALLOWED_SORT_FIELDS.includes(sortBy)) {
+        return res.status(400).json({ error: `Invalid sortBy field. Allowed: ${ALLOWED_SORT_FIELDS.join(', ')}` });
+      }
 
       const where: any = {
+        homeId,
         isDeleted: false,
-        AND: [
-          date ? { date: new Date(date) } : {},
-        ],
       };
+
+      // Date filter using range (gte / lt) to avoid timezone issues
+      if (dateParam) {
+        const start = new Date(dateParam);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 1); // next day
+        where.date = {
+          gte: start,
+          lt: end,
+        };
+      }
+
+      const skip = (page - 1) * limit;
 
       const [plans, total] = await Promise.all([
         prisma.mealPlan.findMany({
@@ -43,12 +70,19 @@ export class MealPlansController {
     }
   }
 
+  // 2. get: verify ownership via homeId
   public static async get(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const homeId = req.user?.homeId;
+      if (!homeId) {
+        return res.status(400).json({ error: 'Home context is missing' });
+      }
+
       const plan = await prisma.mealPlan.findFirst({
-        where: { id, isDeleted: false },
+        where: { id, homeId, isDeleted: false },
       });
+
       if (!plan) {
         return res.status(404).json({ error: 'Meal plan not found' });
       }
@@ -58,6 +92,7 @@ export class MealPlansController {
     }
   }
 
+  // 3. create: already correct, but keep as is
   public static async create(req: Request, res: Response) {
     try {
       const { date, breakfastName, lunchName, dinnerName } = req.body;
@@ -98,18 +133,47 @@ export class MealPlansController {
     }
   }
 
+  // 4. update: ownership, date normalization, duplicate check
   public static async update(req: Request, res: Response) {
     try {
       const { id } = req.params;
       const { date, breakfastName, lunchName, dinnerName } = req.body;
+      const homeId = req.user?.homeId;
 
-      const plan = await prisma.mealPlan.findFirst({ where: { id, isDeleted: false } });
+      if (!homeId) {
+        return res.status(400).json({ error: 'Home context is missing' });
+      }
+
+      // Fetch plan with ownership check
+      const plan = await prisma.mealPlan.findFirst({
+        where: { id, homeId, isDeleted: false },
+      });
       if (!plan) {
         return res.status(404).json({ error: 'Meal plan not found' });
       }
 
       const updateData: any = {};
-      if (date) updateData.date = new Date(date);
+
+      // Normalize date if provided
+      if (date) {
+        const newDate = new Date(date);
+        newDate.setHours(0, 0, 0, 0);
+
+        // Check for duplicate date (excluding current plan)
+        const duplicate = await prisma.mealPlan.findFirst({
+          where: {
+            date: newDate,
+            homeId,
+            isDeleted: false,
+            id: { not: id }, // exclude self
+          },
+        });
+        if (duplicate) {
+          return res.status(400).json({ error: 'Another meal plan already exists for this date' });
+        }
+        updateData.date = newDate;
+      }
+
       if (breakfastName !== undefined) updateData.breakfastName = breakfastName;
       if (lunchName !== undefined) updateData.lunchName = lunchName;
       if (dinnerName !== undefined) updateData.dinnerName = dinnerName;
@@ -125,11 +189,18 @@ export class MealPlansController {
     }
   }
 
+  // 5. delete: verify ownership
   public static async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const homeId = req.user?.homeId;
+      if (!homeId) {
+        return res.status(400).json({ error: 'Home context is missing' });
+      }
 
-      const plan = await prisma.mealPlan.findFirst({ where: { id, isDeleted: false } });
+      const plan = await prisma.mealPlan.findFirst({
+        where: { id, homeId, isDeleted: false },
+      });
       if (!plan) {
         return res.status(404).json({ error: 'Meal plan not found' });
       }
@@ -145,17 +216,23 @@ export class MealPlansController {
     }
   }
 
+  // 6. notifyReady: verify ownership
   public static async notifyReady(req: Request, res: Response) {
     try {
       const { id } = req.params;
       const { mealType } = req.body; // 'breakfastName' | 'lunchName' | 'dinnerName'
+      const homeId = req.user?.homeId;
+
+      if (!homeId) {
+        return res.status(400).json({ error: 'Home context is missing' });
+      }
 
       if (!mealType || !['breakfastName', 'lunchName', 'dinnerName'].includes(mealType)) {
         return res.status(400).json({ error: 'Valid mealType (breakfastName, lunchName, or dinnerName) is required' });
       }
 
       const plan = await prisma.mealPlan.findFirst({
-        where: { id, isDeleted: false },
+        where: { id, homeId, isDeleted: false },
         include: { home: true },
       });
 

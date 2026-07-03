@@ -1,3 +1,7 @@
+// ==============================================
+// COMPLETE SCHEMA WITH OPTIMIZED INDEXES
+// ==============================================
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -7,6 +11,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ========== ENUMS (unchanged) ==========
 enum Role {
   ADMIN
   HONOUR
@@ -84,16 +89,26 @@ enum NotificationStatus {
   DELIVERED
 }
 
+// ========== MODELS WITH INDEXES ==========
+
 model User {
   id          String    @id @default(uuid())
   email       String    @unique
   password    String
   role        Role
   name        String
+  phone       String?   @unique
+  dateOfBirth DateTime?
+  address     String?
+  occupation  String?
+  maritalStatus   String?   // "single", "married", "divorced", "widowed"
+  preferredLanguage String? @default("en")
+  tone            String?   @default("casual")
+  timezone        String?   @default("Asia/Kolkata")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isDeleted   Boolean   @default(false)
-  
+
   // Relations
   staff       Staff?
   homes       Home[]    @relation("HonourHomes")
@@ -102,6 +117,28 @@ model User {
   groceryReqs GroceryItem[] @relation("RequestedGroceries")
   reports     Report[]  @relation("GeneratedReports")
   notifications Notification[]
+
+  // Butler AI relations
+  healthProfile         HealthProfile?
+  foodPreference        FoodPreference?
+  routines              Routine[]
+  mealHistories         MealHistory[]
+  locationPreference    LocationPreference?
+  conversationMemories  ConversationMemory[]
+  reminders             Reminder[]
+  communicationPreference CommunicationPreference?
+  activityLogs          ActivityLog[]
+  aiProfile             AIProfile?
+  goals                 UserGoal[]
+  habits                UserHabit[]
+  foodRatings           FoodRating[]
+  aiFeedbacks           AIFeedback[]
+
+conversations Conversation[]
+  // Indexes
+  @@index([role])
+  @@index([isDeleted])
+  @@index([preferredLanguage])
 }
 
 model Home {
@@ -123,6 +160,15 @@ model Home {
   inventory   InventoryItem[]
   reports     Report[]
   settings    Setting[]
+
+  // Butler AI relations
+  shoppingLists ShoppingList[]
+  budget        Budget?
+  familyMembers FamilyMember[]
+
+  // Indexes
+  @@index([honourId])
+  @@index([isDeleted])
 }
 
 model Staff {
@@ -133,16 +179,20 @@ model Staff {
   phone       String?
   staffType   StaffType
   salary      Float?
-  status      String    @default("ACTIVE") // ACTIVE, ON_LEAVE, INACTIVE
+  status      String    @default("ACTIVE")
   joinedDate  DateTime  @default(now())
   leftDate    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isDeleted   Boolean   @default(false)
 
-  // Relations
   tasks       Task[]    @relation("AssignedStaff")
   attendance  Attendance[]
+
+  // Indexes
+  @@index([status])
+  @@index([staffType])
+  @@index([isDeleted])
 }
 
 model Task {
@@ -165,8 +215,16 @@ model Task {
   updatedAt       DateTime     @updatedAt
   isDeleted       Boolean      @default(false)
 
-  // Relations
   history         TaskHistory[]
+
+  // Indexes
+  @@index([homeId])
+  @@index([assignedStaffId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([createdById])
+  @@index([isDeleted])
 }
 
 model TaskHistory {
@@ -177,6 +235,11 @@ model TaskHistory {
   changedById String
   remarks     String?
   createdAt   DateTime   @default(now())
+
+  // Indexes
+  @@index([taskId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Attendance {
@@ -193,6 +256,11 @@ model Attendance {
   isDeleted Boolean          @default(false)
 
   @@unique([staffId, date])
+
+  // Indexes
+  @@index([status])
+  @@index([date])
+  @@index([isDeleted])
 }
 
 model Visitor {
@@ -210,33 +278,199 @@ model Visitor {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   isDeleted Boolean       @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([hostId])
+  @@index([status])
+  @@index([checkIn])
+  @@index([isDeleted])
+}
+
+model Food {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    String
+  cuisine     String?
+  season      String?
+  region      String?
+  isVegetarian Boolean @default(true)
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  nutrition   FoodNutrition?
+  ingredients Ingredient[]
+  recipes     RecipeIngredient[]
+  ratings     FoodRating[]
+
+  // Indexes
+  @@index([category])
+  @@index([cuisine])
+  @@index([season])
+  @@index([region])
+  @@index([isVegetarian])
+}
+
+model FoodNutrition {
+  id          String   @id @default(uuid())
+  foodId      String   @unique
+  food        Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  calories    Float?
+  protein     Float?
+  carbs       Float?
+  fat         Float?
+  fiber       Float?
+  sugar       Float?
+  sodium      Float?
+  potassium   Float?
+  calcium     Float?
+  iron        Float?
+  vitaminA    Float?
+  vitaminC    Float?
+  vitaminD    Float?
+}
+
+model Ingredient {
+  id        String   @id @default(uuid())
+  foodId    String
+  food      Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  name      String
+  quantity  Float?
+  unit      String?
+
+  // Indexes
+  @@index([foodId])
+}
+
+model RecipeIngredient {
+  id        String   @id @default(uuid())
+  recipeId  String
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  foodId    String
+  food      Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  quantity  Float?
+  unit      String?
+
+  // Indexes
+  @@index([recipeId])
+  @@index([foodId])
+}
+
+model AIProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  healthConscious Boolean @default(false)
+  communicationStyle String? @default("casual")
+  preferredResponseLength String? @default("medium")
+  dailySummaryEnabled Boolean @default(true)
+  mealSuggestionEnabled Boolean @default(true)
+  likesVoiceReply Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserGoal {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Indexes
+  @@index([userId])
+  @@index([isActive])
+}
+
+model UserHabit {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habit       String
+  frequency   String?
+  preferredTime String?
+  createdAt   DateTime @default(now())
+
+  // Indexes
+  @@index([userId])
+}
+
+model FoodRating {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodId      String
+  food        Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, foodId])
+
+  // Indexes
+  @@index([userId])
+  @@index([foodId])
+  @@index([rating])
+}
+
+model AIFeedback {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendation String
+  accepted    Boolean
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  // Indexes
+  @@index([userId])
+  @@index([accepted])
 }
 
 model PantryItem {
   id          String    @id @default(uuid())
   name        String
   quantity    Float
-  unit        String    // kg, g, l, ml, pcs, etc.
+  unit        String
   minStock    Float     @default(0)
   expiryDate  DateTime?
-  category    String    // VEGETABLES, SPICES, DAIRY, GRAINS, etc.
+  category    String
   homeId      String
   home        Home      @relation(fields: [homeId], references: [id])
+  purchaseDate DateTime?
+  storageLocation String?
+  brand       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isDeleted   Boolean   @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([category])
+  @@index([expiryDate])
+  @@index([isDeleted])
+  @@index([name])
 }
 
 model Recipe {
-  id             String    @id @default(uuid())
-  name           String
-  instructions   String
-  prepTime       Int       // In minutes
-  ingredients    Json      // JSON representation of ingredients and quantities: [{"name":"onion","quantity":2,"unit":"pcs"}]
-  createdById    String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  isDeleted      Boolean   @default(false)
+  id          String   @id @default(uuid())
+  name        String
+  instructions String
+  prepTime    Int
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
+
+  ingredients RecipeIngredient[]
+
+  // Indexes
+  @@index([createdById])
+  @@index([isDeleted])
+  @@index([name])
 }
 
 model MealPlan {
@@ -250,6 +484,11 @@ model MealPlan {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   isDeleted       Boolean   @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([date])
+  @@index([isDeleted])
 }
 
 model GroceryItem {
@@ -266,6 +505,12 @@ model GroceryItem {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   isDeleted     Boolean       @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([status])
+  @@index([requestedById])
+  @@index([isDeleted])
 }
 
 model InventoryItem {
@@ -274,12 +519,17 @@ model InventoryItem {
   description String?
   quantity    Int
   location    String?
-  status      String    @default("AVAILABLE") // AVAILABLE, REPAIR, BROKEN
+  status      String    @default("AVAILABLE")
   homeId      String
   home        Home      @relation(fields: [homeId], references: [id])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isDeleted   Boolean   @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([status])
+  @@index([isDeleted])
 }
 
 model Notification {
@@ -292,13 +542,19 @@ model Notification {
   status      NotificationStatus @default(SENT)
   sentVia     String             @default("WHATSAPP")
   createdAt   DateTime           @default(now())
+
+  // Indexes
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Report {
   id             String    @id @default(uuid())
   title          String
   description    String?
-  type           String    // DAILY_SUMMARY, WEEKLY_SUMMARY, TASK_REPORT, etc.
+  type           String
   content        Json
   homeId         String
   home           Home      @relation(fields: [homeId], references: [id])
@@ -306,6 +562,13 @@ model Report {
   generatedBy    User      @relation("GeneratedReports", fields: [generatedById], references: [id])
   createdAt      DateTime  @default(now())
   isDeleted      Boolean   @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([generatedById])
+  @@index([isDeleted])
 }
 
 model Setting {
@@ -317,4 +580,272 @@ model Setting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   isDeleted Boolean  @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([key])
+  @@index([isDeleted])
+}
+
+// ===================================================
+// ===== NEW MODELS FOR BUTLER AI CONTEXT ============
+// ===================================================
+
+model HealthProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  height            Float?
+  weight            Float?
+  goal              String?
+  allergies         String[]
+  medicalConditions String[]
+  dietaryPreference String?
+  gender            String?
+  bloodGroup        String?
+  activityLevel     String?
+  dailyCalories     Int?
+  dailyWaterGoal    Int?
+  sleepHours        Float?
+  medications       String[]
+  bmi               Float?
+  bodyFat           Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model FoodPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  favoriteFoods    String[]
+  dislikedFoods    String[]
+  oftenEaten       String[]
+  neverEaten       String[]
+  favoriteCuisines String[]
+  favoriteRestaurants String[]
+  preferredMealTime String?
+  spiceLevel       String?
+  preferredCookingStyle String?
+  budgetPreference String?
+  cheatDay         String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Routine {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  mealType   String
+  time       String?
+  typicalMeal String?
+  wakeTime   String?
+  sleepTime  String?
+  exerciseTime String?
+  workStart  String?
+  workEnd    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Indexes
+  @@index([userId])
+  @@index([mealType])
+}
+
+model MealHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime @db.Date
+  mealType   String
+  foodItems  String[]
+  calories   Int?
+  protein    Int?
+  mood       String?
+  carbs      Float?
+  fats       Float?
+  water      Int?
+  moodBefore String?
+  moodAfter  String?
+  fullness   Int?
+  location   String?
+  cookedBy   String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Indexes
+  @@index([userId])
+  @@index([date])
+  @@index([mealType])
+}
+
+model LocationPreference {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  city              String?
+  region            String?
+  country           String?
+  state             String?
+  localPopularFoods String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ShoppingList {
+  id        String   @id @default(uuid())
+  homeId    String
+  home      Home     @relation(fields: [homeId], references: [id])
+  item      String
+  quantity  Float
+  unit      String
+  priority  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isDeleted Boolean  @default(false)
+
+  // Indexes
+  @@index([homeId])
+  @@index([isDeleted])
+}
+
+model Budget {
+  id                  String   @id @default(uuid())
+  homeId              String   @unique
+  home                Home     @relation(fields: [homeId], references: [id])
+  monthlyBudget       Float?
+  currentSpending     Float?
+  preferredPriceRange String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model FamilyMember {
+  id               String   @id @default(uuid())
+  homeId           String
+  home             Home     @relation(fields: [homeId], references: [id])
+  name             String
+  age              Int?
+  dietaryPreference String?
+  allergies        String[]
+  favoriteFoods    String[]
+  dislikedFoods    String[]
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Indexes
+  @@index([homeId])
+  @@index([isActive])
+}
+
+model ConversationMemory {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  key         String
+  value       Json
+  context     String?
+  category    String
+  importance  Int      @default(1)
+  confidence  Float    @default(1)
+  tags        String[]
+  source      String?
+  expiresAt   DateTime?
+  lastAccessed DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Indexes
+  @@index([userId])
+  @@index([category])
+  @@index([expiresAt])
+  @@index([key])
+}
+
+model Reminder {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  scheduledAt DateTime
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
+
+  // Indexes
+  @@index([userId])
+  @@index([scheduledAt])
+  @@index([isCompleted])
+  @@index([isDeleted])
+}
+
+model CommunicationPreference {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  preferredChannel  String   @default("WHATSAPP")
+  quietHoursStart   String?
+  quietHoursEnd     String?
+  dailyDigestTime   String?
+  reminderFrequency String   @default("ON_DEMAND")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+model Conversation{
+
+  id String @id @default(uuid())
+
+  userId String
+
+  title String?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields:[userId],references:[id])
+
+  messages Message[]
+
+  @@index([userId])
+
+}
+model Message{
+
+  id String @id @default(uuid())
+
+  conversationId String
+
+  role String
+
+  content String @db.Text
+
+  tokens Int?
+
+  createdAt DateTime @default(now())
+
+
+      conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+
+}
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  actionType  String
+  details     Json
+  createdAt   DateTime @default(now())
+
+  // Indexes
+  @@index([userId])
+  @@index([actionType])
+  @@index([createdAt])
 }

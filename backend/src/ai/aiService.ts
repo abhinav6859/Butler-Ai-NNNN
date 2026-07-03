@@ -1,5 +1,10 @@
 import prisma from '../prisma/client';
 import { Priority, TaskCategory } from '@prisma/client';
+import { ConversationService } from '../conversations/conversationservice';
+import { ContextBuilder } from '../memory/contextBuilder';
+import { PromptBuilder } from '../memory/promptBuilder';
+import { MemoryExtractor } from '../memory/memoryExtractor';
+import { GeminiService } from './geminiService';
 
 export interface ParsedTaskResult {
   title: string;
@@ -11,13 +16,13 @@ export interface ParsedTaskResult {
 }
 
 export class AIService {
-  private static geminiKey = process.env.GEMINI_API_KEY || '';
+
 
   /**
    * Parse a text command in English or Hindi into a structured Task configuration.
    */
   public static async parseTaskRequest(text: string, homeId: string): Promise<ParsedTaskResult> {
-    if (this.geminiKey) {
+    if (process.env.GEMINI_API_KEY) {
       try {
         const result = await this.callGeminiForTask(text, homeId);
         if (result) return result;
@@ -35,9 +40,21 @@ export class AIService {
     const pantry = await prisma.pantryItem.findMany({
       where: { homeId, isDeleted: false },
     });
+    // const recipes = await prisma.recipe.findMany({
+    //   where: { isDeleted: false },
+    // });
     const recipes = await prisma.recipe.findMany({
-      where: { isDeleted: false },
-    });
+  where: {
+    isDeleted: false
+  },
+  include: {
+    ingredients: {
+      include: {
+        food: true
+      }
+    }
+  }
+});
 
     const suggestions: any[] = [];
 
@@ -101,83 +118,60 @@ export class AIService {
   /**
    * Answer a general question about the household's operational state.
    */
-  public static async chatAboutHome(message: string, homeId: string): Promise<string> {
-    // Gather system state for context
-    const openTasks = await prisma.task.count({ where: { homeId, status: { in: ['PENDING', 'IN_PROGRESS'] }, isDeleted: false } });
-    const attendanceToday = await prisma.attendance.findMany({
-      where: { date: new Date(), isDeleted: false },
-      include: { staff: true },
-    });
-    const lowStockCount = await prisma.pantryItem.count({
-      where: {
+ public static async chatAboutHome(
+    message: string,
+    homeId: string,
+    userId: string
+): Promise<string> {
+
+    // 1. Save user message
+    await ConversationService.saveUserMessage(
+        userId,
+        message
+    );
+
+    // 2. Load everything needed
+    const context =
+    await ContextBuilder.build(
+        userId,
         homeId,
-        isDeleted: false,
-        quantity: { lt: prisma.pantryItem.fields.minStock },
-      },
-    });
-    const visitorsToday = await prisma.visitor.count({
-      where: {
-        homeId,
-        isDeleted: false,
-        createdAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        },
-      },
-    });
+        message
+    );
 
-    if (this.geminiKey) {
-      try {
-        const prompt = `
-You are the Butler AI assistant for the household. Here is the current status of the household:
-- Open Tasks: ${openTasks}
-- Staff Present Today: ${attendanceToday.filter(a => a.status === 'PRESENT').map(a => `${a.staff.name} (${a.staff.staffType})`).join(', ') || 'None'}
-- Low Stock Pantry Items: ${lowStockCount}
-- Visitors Checked-In or Expected Today: ${visitorsToday}
+    // 3. Build final prompt
+    const prompt =
+    PromptBuilder.create(context);
 
-The user asks: "${message}"
+    // 4. Gemini
+    const reply =
+   await GeminiService.generate(prompt);
 
-Answer this question in a friendly, helpful, and concise manner. Keep it to 2-3 sentences. Support English or Hindi depending on the language they asked in.
-`;
-        return await this.callGeminiGeneral(prompt);
-      } catch (error) {
-        console.error('Gemini chat failed, fallback to local QA:', error);
-      }
-    }
+    // 5. Save assistant reply
+    await ConversationService.saveAssistantMessage(
+        userId,
+        reply
+    );
 
-    // Local QA rules
-    const msg = message.toLowerCase();
-    if (msg.includes('task') || msg.includes('kam') || msg.includes('kaam')) {
-      return `Currently, there are ${openTasks} open tasks pending in the household. You can view them in the Tasks dashboard.`;
-    }
-    if (msg.includes('staff') || msg.includes('duty') || msg.includes('present') || msg.includes('kaun') || msg.includes('kon')) {
-      const presentNames = attendanceToday
-        .filter((a) => a.status === 'PRESENT')
-        .map((a) => `${a.staff.name} (${a.staff.staffType})`);
-      return presentNames.length > 0
-        ? `The following staff members are on duty today: ${presentNames.join(', ')}.`
-        : 'No staff members have checked in today yet.';
-    }
-    if (msg.includes('pantry') || msg.includes('stock') || msg.includes('grocery') || msg.includes('groceries') || msg.includes('ration') || msg.includes('saman')) {
-      return lowStockCount > 0
-        ? `We have ${lowStockCount} pantry items running below the minimum stock limit. You can review them in the pantry section to trigger a grocery request.`
-        : 'All pantry items are fully stocked above minimum limits.';
-    }
-    if (msg.includes('visitor') || msg.includes('mehman') || msg.includes('guest')) {
-      return `We have ${visitorsToday} visitor entries registered for today.`;
-    }
+    // 6. Learn from conversation
+    await MemoryExtractor.extract(
+        userId,
+        message,
+        reply
+    );
 
-    return `I am here to help you manage the household. We have ${openTasks} open tasks, ${attendanceToday.filter(a => a.status === 'PRESENT').length} staff on duty, and ${lowStockCount} low-stock pantry items. Ask me about tasks, staff on duty, pantry, or visitors.`;
-  }
+    return reply;
+
+}
 
   /**
    * Summarize a report's text or JSON content.
    */
   public static async summarizeReport(reportContent: any): Promise<string> {
     const reportText = typeof reportContent === 'string' ? reportContent : JSON.stringify(reportContent);
-    if (this.geminiKey) {
+    if (process.env.GEMINI_API_KEY) {
       try {
         const prompt = `Summarize the following household operations report into a single paragraph of 2-3 key findings/actions: ${reportText}`;
-        return await this.callGeminiGeneral(prompt);
+        return await GeminiService.generate(prompt);
       } catch (error) {
         console.error('Gemini report summary failed, fallback to local summary:', error);
       }
@@ -212,7 +206,7 @@ Match the task to a staff member based on their role or name matches.
 Return ONLY valid JSON. No markdown codeblocks, no extra text.
 `;
 
-    const responseText = await this.callGeminiGeneral(prompt);
+    const responseText = await GeminiService.generate(prompt);
     // Clean codeblocks
     const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
@@ -226,25 +220,7 @@ Return ONLY valid JSON. No markdown codeblocks, no extra text.
     };
   }
 
-  private static async callGeminiGeneral(prompt: string): Promise<string> {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Gemini API returned status ${response.status}`);
-    }
-
-    const data = (await response.json()) as any;
-    return data.candidates[0].content.parts[0].text;
-  }
+ 
 
   private static async ruleBasedTaskParser(text: string, homeId: string): Promise<ParsedTaskResult> {
     const lowercaseText = text.toLowerCase();

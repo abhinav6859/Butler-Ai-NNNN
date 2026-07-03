@@ -5,7 +5,8 @@ export class AIController {
   public static async parseTask(req: Request, res: Response) {
     try {
       const { text } = req.body;
-      const homeId = req.user?.homeId;
+   
+const homeId = req.user?.homeId;
 
       if (!text) {
         return res.status(400).json({ error: 'Text prompt is required' });
@@ -23,7 +24,8 @@ export class AIController {
 
   public static async suggestMeals(req: Request, res: Response) {
     try {
-      const homeId = req.user?.homeId;
+   
+const homeId = req.user?.homeId;
       if (!homeId) {
         return res.status(400).json({ error: 'Home context is missing' });
       }
@@ -37,6 +39,7 @@ export class AIController {
 
   public static async suggestGroceries(req: Request, res: Response) {
     try {
+     
       const homeId = req.user?.homeId;
       if (!homeId) {
         return res.status(400).json({ error: 'Home context is missing' });
@@ -52,6 +55,7 @@ export class AIController {
   public static async chat(req: Request, res: Response) {
     try {
       const { message } = req.body;
+      const userId = req.user?.id;
       const homeId = req.user?.homeId;
 
       if (!message) {
@@ -60,8 +64,16 @@ export class AIController {
       if (!homeId) {
         return res.status(400).json({ error: 'Home context is missing' });
       }
-
-      const reply = await AIService.chatAboutHome(message, homeId);
+if (!userId) {
+    return res.status(401).json({
+        error: "User not found"
+    });
+}
+const reply = await AIService.chatAboutHome(
+    message,
+    homeId,
+    userId
+);
       return res.json({ reply });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
