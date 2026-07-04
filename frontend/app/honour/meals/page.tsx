@@ -6,6 +6,7 @@ import { PageHeader, LoadingSpinner } from '@/components/ui';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import api from '@/services/api';
 import { Plus, ChevronLeft, ChevronRight, Coffee, Sun, Moon, Sparkles } from 'lucide-react';
+import { MealHistory } from '@/components/meals';
 
 function getWeekDays(startDate: Date) {
   return Array.from({ length: 7 }, (_, i) => {
@@ -228,10 +229,19 @@ export default function HonourMealsPage() {
                 </div>
               </div>
             ))}
+
           </div>
+          
         )}
       </div>
-
+              <MealHistory
+    days={7}
+    editable={true}
+    showEditButton={true}
+    onEdit={(meal) => {
+        openForDate(new Date(meal.date), meal);
+    }}
+/>
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={`Meal Plan — ${selectedDate}`}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField label="Breakfast">
@@ -250,6 +260,7 @@ export default function HonourMealsPage() {
             </button>
           </div>
         </form>
+      
       </Modal>
     </div>
   );
