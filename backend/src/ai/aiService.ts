@@ -4,7 +4,7 @@ import { ConversationService } from '../conversations/conversationservice';
 import { ContextBuilder } from '../memory/contextBuilder';
 import { PromptBuilder } from '../memory/promptBuilder';
 import { MemoryExtractor } from '../memory/memoryExtractor';
-import { GeminiService } from './geminiService';
+import { GroqService } from './groqService';
 
 export interface ParsedTaskResult {
   title: string;
@@ -22,12 +22,12 @@ export class AIService {
    * Parse a text command in English or Hindi into a structured Task configuration.
    */
   public static async parseTaskRequest(text: string, homeId: string): Promise<ParsedTaskResult> {
-    if (process.env.GEMINI_API_KEY) {
+    if (process.env.GROQ_API_KEY) {
       try {
         const result = await this.callGeminiForTask(text, homeId);
         if (result) return result;
       } catch (error) {
-        console.error('Gemini API call failed, falling back to rule-based parser:', error);
+        console.error('GROQ API call failed, falling back to rule-based parser:', error);
       }
     }
     return this.ruleBasedTaskParser(text, homeId);
@@ -142,9 +142,9 @@ export class AIService {
     const prompt =
     PromptBuilder.create(context);
 
-    // 4. Gemini
+    
     const reply =
-   await GeminiService.generate(prompt);
+   await GroqService.generate(prompt);
 
     // 5. Save assistant reply
     await ConversationService.saveAssistantMessage(
@@ -163,17 +163,17 @@ export class AIService {
 
 }
 
-  /**
+  /***
    * Summarize a report's text or JSON content.
    */
   public static async summarizeReport(reportContent: any): Promise<string> {
     const reportText = typeof reportContent === 'string' ? reportContent : JSON.stringify(reportContent);
-    if (process.env.GEMINI_API_KEY) {
+    if (process.env.GROQ_API_KEY) {
       try {
         const prompt = `Summarize the following household operations report into a single paragraph of 2-3 key findings/actions: ${reportText}`;
-        return await GeminiService.generate(prompt);
+        return await GroqService.generate(prompt);
       } catch (error) {
-        console.error('Gemini report summary failed, fallback to local summary:', error);
+        console.error('GROQ report summary failed, fallback to local summary:', error);
       }
     }
 
@@ -206,7 +206,7 @@ Match the task to a staff member based on their role or name matches.
 Return ONLY valid JSON. No markdown codeblocks, no extra text.
 `;
 
-    const responseText = await GeminiService.generate(prompt);
+    const responseText = await GroqService.generate(prompt);
     // Clean codeblocks
     const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanJson);

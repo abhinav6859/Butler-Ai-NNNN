@@ -17,7 +17,7 @@ export default function AdminAIPage() {
             <div>
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Butler AI Assistant</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                AI features are running in <strong className="text-purple-600">Rule-Based Mode</strong>. To unlock advanced AI capabilities powered by Google Gemini, add your API key to <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">GEMINI_API_KEY</code> in the backend <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">.env</code> file.
+                AI features are running in <strong className="text-purple-600">Rule-Based Mode</strong>. To unlock advanced AI capabilities powered by GROQ, add your API key to <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">GROQ_API_KEY</code> in the backend <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">.env</code> file.
               </p>
             </div>
           </div>

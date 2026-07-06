@@ -1,4 +1,4 @@
-import { GeminiService } from "../ai/geminiService";
+import { GroqService } from "../ai/groqService";
 import { MemoryService } from "./memoryService";
 
 export class MemoryExtractor {
@@ -77,7 +77,7 @@ ${aiResponse}
 
 `;
 
-  const response = await GeminiService.generate(prompt);
+  const response = await GroqService.generate(prompt);
 
 const cleanJson = response
     .replace(/```json/g, "")
